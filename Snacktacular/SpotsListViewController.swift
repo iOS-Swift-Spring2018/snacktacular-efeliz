@@ -8,21 +8,53 @@
 
 import UIKit
 import CoreLocation
+import Firebase
+import FirebaseAuthUI
+import FirebaseGoogleAuthUI
 
 class SpotsListViewController: UIViewController {
     
     @IBOutlet weak var tableView: UITableView!
     var spots: Spots!
+    var authUI: FUIAuth!
     
     override func viewDidLoad() {
         super.viewDidLoad()
+        
+        authUI = FUIAuth.defaultAuthUI()
+        // You need to adopt a FUIAuthDelegate protocol to receive callback
+        authUI?.delegate = self
+        
         tableView.delegate = self
         tableView.dataSource = self
+        tableView.isHidden = true
         
         spots = Spots()
-        spots.spotArray.append(Spot(name: "El Pelon", address: "Comm. Ave", coordinate: CLLocationCoordinate2D(), numberOfReviews: 0, averageRating: 0.0, postingUserID: "", documentID: ""))
-        spots.spotArray.append(Spot(name: "Shake Shack", address: "The Street - Chestnut Hill", coordinate: CLLocationCoordinate2D(), numberOfReviews: 0, averageRating: 0.0, postingUserID: "", documentID: ""))
-        spots.spotArray.append(Spot(name: "Pino's Pizza", address: "Cleveland Circle", coordinate: CLLocationCoordinate2D(), numberOfReviews: 0, averageRating: 0.0, postingUserID: "", documentID: ""))
+    }
+    
+    override func viewWillAppear(_ animated: Bool) {
+        spots.loadData {
+            self.tableView.reloadData()
+        }
+    }
+    
+    
+    
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        signIn()
+    }
+    
+    func signIn(){
+        let providers: [FUIAuthProvider] = [
+        FUIGoogleAuth(),
+        ]
+        if authUI.auth?.currentUser == nil {
+            self.authUI?.providers = providers
+            present(authUI.authViewController(), animated: true, completion: nil)
+        } else {
+            tableView.isHidden = false
+        }
     }
     
     override func prepare(for segue: UIStoryboardSegue, sender: Any?) {
@@ -36,6 +68,19 @@ class SpotsListViewController: UIViewController {
             }
         }
     }
+    
+    @IBAction func signOutPressed(_ sender: UIBarButtonItem) {
+        do {
+            try authUI!.signOut()
+            print("^^^ Successfully signed out!")
+            tableView.isHidden = true
+            signIn()
+        } catch {
+            tableView.isHidden = true
+            print("*** Error: Could not sign out!")
+        }
+    }
+    
 }
 
 extension SpotsListViewController: UITableViewDelegate, UITableViewDataSource {
@@ -49,5 +94,41 @@ extension SpotsListViewController: UITableViewDelegate, UITableViewDataSource {
     }
     func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
         return 60
+    }
+}
+
+extension SpotsListViewController: FUIAuthDelegate {
+    func application(_ app: UIApplication, open url: URL,
+                     options: [UIApplicationOpenURLOptionsKey : Any]) -> Bool {
+        let sourceApplication = options[UIApplicationOpenURLOptionsKey.sourceApplication] as! String?
+        if FUIAuth.defaultAuthUI()?.handleOpen(url, sourceApplication: sourceApplication) ?? false {
+            return true
+        }
+        // other URL handling goes here.
+        return false
+    }
+    
+    func authPickerViewController(forAuthUI authUI: FUIAuth) -> FUIAuthPickerViewController {
+        let loginViewController = FUIAuthPickerViewController(authUI: authUI)
+        loginViewController.view.backgroundColor = UIColor.white
+        
+        let marginInsets: CGFloat = 16
+        let imageHeight: CGFloat = 225
+        let imageY = self.view.center.y - imageHeight
+        let logoFrame = CGRect(x: self.view.frame.origin.x + marginInsets, y: imageY, width: self.view.frame.width - (marginInsets * 2), height: imageHeight)
+        let logoImageView = UIImageView(frame: logoFrame)
+        logoImageView.image = UIImage(named: "logo")
+        logoImageView.contentMode = .scaleAspectFit
+        loginViewController.view.addSubview(logoImageView)
+        
+        return loginViewController
+    }
+    
+    func authUI(_ authUI: FUIAuth, didSignInWith user: User?, error: Error?) {
+        // handle user and error as necessary
+        if let user = user {
+            tableView.isHidden = false
+            print("*** We signed in with the user \(user.email ?? "unknown email")")
+        }
     }
 }
